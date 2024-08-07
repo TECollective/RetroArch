@@ -1,0 +1,125 @@
+name: UWP
+'on':
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+jobs:
+  XboxOne:
+    runs-on: windows-latest
+    steps:
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v2
+      - name: Checkout Repository
+        uses: actions/checkout@v4.1.7
+        with:
+          fetch-depth: 0
+          submodules: false
+      - name: Download and Extract DLLs
+        run: >
+          Invoke-WebRequest -Uri
+          "https://archive.org/download/retroarch-xbox-files/RetroArch%20Xbox%20Files.zip"
+          -OutFile "DLLs.zip"
+
+          Expand-Archive -Path "DLLs.zip" -DestinationPath
+          "pkg/msvc-uwp/RetroArch-msvcUWP/cores/x64" -Force
+
+          Remove-Item "pkg/msvc-uwp/RetroArch-msvcUWP/cores/x64/.empty" -Force
+        shell: pwsh
+      - name: Download and Extract Cores
+        run: >
+          Invoke-WebRequest -Uri
+          "https://archive.org/download/retroarch-xbox-files/RetroArch%20Xbox%20Angle%20Cores.zip"
+          -OutFile "Angle_Cores.zip"
+
+          Expand-Archive -Path "Angle_Cores.zip" -DestinationPath
+          "pkg/msvc-uwp/RetroArch-msvcUWP/cores/x64/cores" -Force
+
+          Remove-Item "pkg/msvc-uwp/RetroArch-msvcUWP/cores/x64/cores/.empty"
+          -Force
+        shell: pwsh
+      - name: Compile ANGLE build
+        run: |
+          msbuild pkg\msvc-UWP\RetroArch-msvcUWP.sln `
+          /p:AppxBundle=Always `
+          /p:UapAppxPackageBuildMode==SideloadOnly `
+          /p:AppxBundlePlatforms="x64" `
+          /p:Configuration="ReleaseANGLE" `
+          /p:Platform="x64" `
+          /restore
+        shell: pwsh
+      - name: Grab AppX package
+        shell: cmd
+        run: >
+          cd pkg\msvc-uwp\x64\ReleaseANGLE\RetroArch-msvcUWP && copy /B *ReleaseANGLE.appx ..\..\RetroArch-XboxOne.appx
+      - name: Upload AppX package
+        uses: actions/upload-artifact@v4
+        with:
+          name: "RetroArch-XboxOne"
+          path: ./pkg/msvc-uwp/x64/RetroArch-XboxOne.appx
+  SeriesConsoles:
+    runs-on: windows-latest
+    steps:
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v2
+      - name: Checkout Repository
+        uses: actions/checkout@v4.1.7
+        with:
+          fetch-depth: 0
+          submodules: false
+      - name: Download and Extract DLLs
+        run: >
+          Invoke-WebRequest -Uri
+          "https://archive.org/download/retroarch-xbox-files/RetroArch%20Xbox%20Files.zip"
+          -OutFile "DLLs.zip"
+
+          Expand-Archive -Path "DLLs.zip" -DestinationPath
+          "pkg/msvc-uwp/RetroArch-msvcUWP/cores/x64" -Force
+
+          Remove-Item "pkg/msvc-uwp/RetroArch-msvcUWP/cores/x64/.empty" -Force
+        shell: pwsh
+      - name: Compile Mesa build
+        run: |
+          msbuild pkg\msvc-UWP\RetroArch-msvcUWP.sln `
+          /p:AppxBundle=Always `
+          /p:UapAppxPackageBuildMode==SideloadOnly `
+          /p:AppxBundlePlatforms="x64" `
+          /p:Configuration="Release" `
+          /p:Platform="x64" `
+          /restore
+        shell: pwsh
+      - name: Grab AppX package
+        shell: cmd
+        run: >
+          cd pkg\msvc-uwp\x64\Release\RetroArch-msvcUWP && copy /B *x64.appx ..\..\RetroArch-SeriesConsoles.appx
+      - name: Upload AppX package
+        uses: actions/upload-artifact@v4.3.5
+        with:
+          name: "RetroArch-SeriesConsoles"
+          path: ./pkg/msvc-uwp/x64/RetroArch-SeriesConsoles.appx      
+
+  Publish-release:
+    needs: [XboxOne, SeriesConsoles]
+    name: Publish Release
+    if: github.ref == 'refs/heads/master'
+    permissions: write-all
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4.1.7
+        with:
+          path: ./artifacts/
+          
+      - name: Create a new release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          automatic_release_tag: latest
+          prerelease: false
+          title: Latest UWP Builds
+          files: | 
+            ./artifacts/RetroArch-XboxOne/RetroArch-XboxOne.appx
+            ./artifacts/RetroArch-SeriesConsoles/RetroArch-SeriesConsoles.appx
